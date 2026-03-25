@@ -143,7 +143,7 @@ Your last mission is to improve the onsets and frames model with your own ideas.
 - Data Augmentation: key transpose (pitch-shifting in semitone units), random masking (blank masking or Gaussian masking)
 - Input representation: Constant-Q transform ([nnAudio](https://github.com/KinWaiCheuk/nnAudio) is a recommneded library for CQT) or other time-frequency representations 
 - Neural Network: [HPPNet](https://github.com/WX-Wei/HPPNet) (harmonic dilated conv layers and frequency grouped RNN layer) 
-- Loss: regression loss in the High-resolution AMT model, focal loss (preferred in class imbalance)  
+- Loss: regression loss in the [high-resolution piano transcription model](https://arxiv.org/abs/2010.01815), focal loss (preferred in class imbalance)  
 - Teacher-Student model using the noisy student approach 
 
 
