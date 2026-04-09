@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -85,6 +85,21 @@ def _safe_note_eval(
     return float(values[0]), float(values[1]), float(values[2]), float(values[3])
 
 
+def unpack_predictions(model_output) -> Tuple[torch.Tensor, torch.Tensor, Optional[torch.Tensor]]:
+    """Normalizes model outputs to (frame_pred, onset_pred, offset_pred_or_none)."""
+    if isinstance(model_output, tuple):
+        if len(model_output) == 2:
+            frame_pred, onset_pred = model_output
+            return frame_pred, onset_pred, None
+        if len(model_output) == 3:
+            frame_pred, onset_pred, offset_pred = model_output
+            return frame_pred, onset_pred, offset_pred
+    raise ValueError(
+        "Model forward() must return (frame_pred, onset_pred) or "
+        "(frame_pred, onset_pred, offset_pred)."
+    )
+
+
 def evaluate_batch(
     model: torch.nn.Module,
     batch: Dict[str, torch.Tensor],
@@ -93,12 +108,16 @@ def evaluate_batch(
     metrics: Dict[str, List[float]] = defaultdict(list)
     batch = allocate_batch(batch, device)
 
-    frame_pred, onset_pred = model(batch["audio"])
+    model_output = model(batch["audio"])
+    frame_pred, onset_pred, offset_pred = unpack_predictions(model_output)
     criterion = torch.nn.BCELoss()
     frame_loss = criterion(frame_pred, batch["frame"])
     onset_loss = criterion(onset_pred, batch["onset"])
     metrics["metric/loss/frame_loss"].append(float(frame_loss.detach().cpu().item()))
     metrics["metric/loss/onset_loss"].append(float(onset_loss.detach().cpu().item()))
+    if offset_pred is not None and "offset" in batch:
+        offset_loss = criterion(offset_pred, batch["offset"])
+        metrics["metric/loss/offset_loss"].append(float(offset_loss.detach().cpu().item()))
 
     for batch_idx in range(batch["audio"].shape[0]):
         pr, re, f1 = framewise_eval(frame_pred[batch_idx], batch["frame"][batch_idx])
@@ -110,6 +129,12 @@ def evaluate_batch(
         metrics["metric/frame/onset_precision"].append(pr)
         metrics["metric/frame/onset_recall"].append(re)
         metrics["metric/frame/onset_f1"].append(f1)
+
+        if offset_pred is not None and "offset" in batch:
+            pr, re, f1 = framewise_eval(offset_pred[batch_idx], batch["offset"][batch_idx])
+            metrics["metric/frame/offset_precision"].append(pr)
+            metrics["metric/frame/offset_recall"].append(re)
+            metrics["metric/frame/offset_f1"].append(f1)
 
         p_est, i_est = extract_notes(onset_pred[batch_idx], frame_pred[batch_idx])
         p_ref, i_ref = extract_notes(batch["onset"][batch_idx], batch["frame"][batch_idx])

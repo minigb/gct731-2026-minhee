@@ -101,15 +101,20 @@ class MAESTRO_small(Dataset):
 
         frame = midi.get_piano_roll(fs=frames_per_sec)
         onset = np.zeros_like(frame)
+        offset = np.zeros_like(frame)
         for inst in midi.instruments:
             for note in inst.notes:
-                onset[note.pitch, int(note.start * frames_per_sec)] = 1
+                onset_index = int(note.start * frames_per_sec)
+                offset_index = min(int(note.end * frames_per_sec), onset.shape[1] - 1)
+                onset[note.pitch, onset_index] = 1
+                offset[note.pitch, offset_index] = 1
 
         data = {
             "path": audio_path,
             "audio": audio_tensor,
             "frame": torch.from_numpy(frame[MIN_MIDI : MAX_MIDI + 1].T),
             "onset": torch.from_numpy(onset[MIN_MIDI : MAX_MIDI + 1].T),
+            "offset": torch.from_numpy(offset[MIN_MIDI : MAX_MIDI + 1].T),
         }
         return data
 
@@ -133,6 +138,7 @@ class MAESTRO_small(Dataset):
         audio = data["audio"]
         frames = data["frame"] >= 1
         onsets = data["onset"] >= 1
+        offsets = data["offset"] >= 1
         frame_len = frames.shape[0]
 
         if self.sample_length is not None:
@@ -150,19 +156,23 @@ class MAESTRO_small(Dataset):
             audio_seg = audio[sample_begin:sample_end]
             frame_seg = frames[step_begin:step_end]
             onset_seg = onsets[step_begin:step_end]
+            offset_seg = offsets[step_begin:step_end]
 
             audio_seg = self._pad_audio(audio_seg, self.sample_length)
             frame_seg = self._pad_roll(frame_seg, n_steps)
             onset_seg = self._pad_roll(onset_seg, n_steps)
+            offset_seg = self._pad_roll(offset_seg, n_steps)
         else:
             audio_seg = audio
             frame_seg = frames
             onset_seg = onsets
+            offset_seg = offsets
 
         result = {"path": data["path"]}
         result["audio"] = audio_seg.float().div_(32768.0)
         result["frame"] = frame_seg.float()
         result["onset"] = onset_seg.float()
+        result["offset"] = offset_seg.float()
         return result
 
     def __len__(self) -> int:

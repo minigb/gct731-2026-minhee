@@ -1,0 +1,4 @@
+name: offset-conditioned-onsets-and-frames
+cnn_unit: 24
+fc_unit: 64
+rnn_unit: 64

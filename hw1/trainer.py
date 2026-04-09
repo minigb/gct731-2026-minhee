@@ -11,7 +11,7 @@ from torch.optim.lr_scheduler import StepLR
 from tqdm import tqdm
 
 from data_zoo import allocate_batch
-from evaluate import evaluate_model
+from evaluate import evaluate_model, unpack_predictions
 
 
 def cycle(iterable: Iterable):
@@ -27,6 +27,7 @@ class Runner:
         lr: float,
         weight_decay: float,
         steps_per_epoch: int = 1000,
+        offset_loss_weight: float = 1.0,
         grad_clip: float = 3.0,
         device: str | None = None,
     ):
@@ -40,6 +41,7 @@ class Runner:
         self.scheduler = StepLR(self.optimizer, step_size=1000, gamma=0.98)
         self.criterion = nn.BCELoss().to(self.device)
         self.steps_per_epoch = steps_per_epoch
+        self.offset_loss_weight = offset_loss_weight
         self.grad_clip = grad_clip
 
     def train_epoch(self, dataloader) -> float:
@@ -51,10 +53,14 @@ class Runner:
             self.optimizer.zero_grad()
             batch = allocate_batch(batch, self.device)
 
-            frame_pred, onset_pred = self.model(batch["audio"])
+            model_output = self.model(batch["audio"])
+            frame_pred, onset_pred, offset_pred = unpack_predictions(model_output)
             frame_loss = self.criterion(frame_pred, batch["frame"])
             onset_loss = self.criterion(onset_pred, batch["onset"])
             loss = onset_loss + frame_loss
+            if offset_pred is not None and "offset" in batch:
+                offset_loss = self.criterion(offset_pred, batch["offset"])
+                loss = loss + self.offset_loss_weight * offset_loss
 
             loss.backward()
             clip_grad_norm_(self.model.parameters(), self.grad_clip)
@@ -69,7 +75,7 @@ class Runner:
 
     def validate(self, dataloader) -> Tuple[float, Dict[str, float]]:
         avg_metrics = evaluate_model(self.model, dataloader, self.device, desc="Valid")
-        valid_loss = float(
-            avg_metrics.get("metric/loss/frame_loss", 0.0) + avg_metrics.get("metric/loss/onset_loss", 0.0)
-        )
+        valid_loss = float(avg_metrics.get("metric/loss/frame_loss", 0.0) + avg_metrics.get("metric/loss/onset_loss", 0.0))
+        if "metric/loss/offset_loss" in avg_metrics:
+            valid_loss += self.offset_loss_weight * float(avg_metrics["metric/loss/offset_loss"])
         return valid_loss, avg_metrics

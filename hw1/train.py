@@ -18,7 +18,7 @@ import hydra
 from config import HOP_SIZE
 from data_zoo import MAESTRO_small
 from evaluate import print_f1_metrics
-from model_zoo import BasicOnsetsAndFrames, OnsetsAndFrames
+from model_zoo import BasicOnsetsAndFrames, OffsetConditionedOnsetsAndFrames, OnsetsAndFrames
 from trainer import Runner
 
 
@@ -45,6 +45,8 @@ def build_model_from_config(model_name: str, cnn_unit: int, fc_unit: int, rnn_un
         return BasicOnsetsAndFrames(cnn_unit=cnn_unit, fc_unit=fc_unit)
     if model_name == "onsets-and-frames":
         return OnsetsAndFrames(cnn_unit=cnn_unit, fc_unit=fc_unit, rnn_unit=rnn_unit)
+    if model_name == "offset-conditioned-onsets-and-frames":
+        return OffsetConditionedOnsetsAndFrames(cnn_unit=cnn_unit, fc_unit=fc_unit, rnn_unit=rnn_unit)
     raise ValueError(f"Unsupported model name: {model_name}")
 
 
@@ -77,6 +79,7 @@ def build_experiment_config(cfg: DictConfig, run_dir: Path, device: torch.device
             "steps_per_epoch": int(cfg.optimization.steps_per_epoch),
             "learning_rate": float(cfg.optimization.learning_rate),
             "weight_decay": float(cfg.optimization.weight_decay),
+            "offset_loss_weight": float(cfg.optimization.offset_loss_weight),
         },
         "wandb": {
             "enabled": bool(cfg.wandb.enabled),
@@ -140,6 +143,7 @@ def save_checkpoint(
             "optimizer_hparams": {
                 "learning_rate": float(cfg.optimization.learning_rate),
                 "weight_decay": float(cfg.optimization.weight_decay),
+                "offset_loss_weight": float(cfg.optimization.offset_loss_weight),
             },
             "model_state_dict": runner.model.state_dict(),
             "optimizer_state_dict": runner.optimizer.state_dict(),
@@ -206,6 +210,7 @@ def main(cfg: DictConfig) -> None:
         lr=float(cfg.optimization.learning_rate),
         weight_decay=float(cfg.optimization.weight_decay),
         steps_per_epoch=int(cfg.optimization.steps_per_epoch),
+        offset_loss_weight=float(cfg.optimization.offset_loss_weight),
         device=str(device),
     )
 

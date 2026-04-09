@@ -23,7 +23,7 @@ from config import (
 )
 from data_zoo import MAESTRO_small
 from evaluate import evaluate_model, print_f1_metrics
-from model_zoo import BasicOnsetsAndFrames, OnsetsAndFrames
+from model_zoo import BasicOnsetsAndFrames, OffsetConditionedOnsetsAndFrames, OnsetsAndFrames
 
 
 def parse_args() -> argparse.Namespace:
@@ -69,7 +69,11 @@ def get_device(device_arg: str) -> torch.device:
 def build_model_from_config(model_name: str, cnn_unit: int, fc_unit: int, rnn_unit: int) -> torch.nn.Module:
     if model_name == "basic":
         return BasicOnsetsAndFrames(cnn_unit=cnn_unit, fc_unit=fc_unit)
-    return OnsetsAndFrames(cnn_unit=cnn_unit, fc_unit=fc_unit, rnn_unit=rnn_unit)
+    if model_name == "onsets-and-frames":
+        return OnsetsAndFrames(cnn_unit=cnn_unit, fc_unit=fc_unit, rnn_unit=rnn_unit)
+    if model_name == "offset-conditioned-onsets-and-frames":
+        return OffsetConditionedOnsetsAndFrames(cnn_unit=cnn_unit, fc_unit=fc_unit, rnn_unit=rnn_unit)
+    raise ValueError(f"Unsupported model name: {model_name}")
 
 
 def init_wandb(args: argparse.Namespace, config: Dict[str, Any]):

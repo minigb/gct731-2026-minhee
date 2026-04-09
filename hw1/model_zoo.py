@@ -163,3 +163,60 @@ class OnsetsAndFrames(nn.Module):
         frame_input = torch.cat([frame_pred_conv_output, onset_pred.detach()], dim=-1)
         frame_pred = self.frame_stack_rnn(frame_input)
         return frame_pred, onset_pred
+
+
+class OffsetConditionedOnsetsAndFrames(nn.Module):
+    """Onsets-and-Frames variant with an explicit offset head.
+
+    Design:
+    1. Predict offsets from shared acoustic features.
+    2. Use offset predictions to condition onset prediction.
+    3. Use both onset and offset predictions to condition frame prediction.
+    """
+
+    def __init__(self, cnn_unit: int, fc_unit: int, rnn_unit: int):
+        super().__init__()
+        self.melspectrogram = LogMelSpectrogram()
+
+        self.offset_stack = nn.Sequential(
+            ConvStack(N_MELS, cnn_unit, fc_unit),
+            BiLSTM(fc_unit, rnn_unit),
+            nn.Linear(rnn_unit * 2, N_PIANO_KEYS),
+            nn.Sigmoid(),
+        )
+
+        self.onset_stack_conv = ConvStack(N_MELS, cnn_unit, fc_unit)
+        self.onset_stack_rnn = nn.Sequential(
+            BiLSTM(fc_unit + N_PIANO_KEYS, rnn_unit),
+            nn.Linear(rnn_unit * 2, N_PIANO_KEYS),
+            nn.Sigmoid(),
+        )
+
+        self.frame_stack_conv = nn.Sequential(
+            ConvStack(N_MELS, cnn_unit, fc_unit),
+            nn.Linear(fc_unit, N_PIANO_KEYS),
+            nn.Sigmoid(),
+        )
+        self.frame_stack_rnn = nn.Sequential(
+            BiLSTM(N_PIANO_KEYS * 3, rnn_unit),
+            nn.Linear(rnn_unit * 2, N_PIANO_KEYS),
+            nn.Sigmoid(),
+        )
+
+    def forward(self, audio: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        mel = self.melspectrogram(audio)
+
+        offset_pred = self.offset_stack(mel)
+
+        onset_conv_features = self.onset_stack_conv(mel)
+        onset_input = torch.cat([onset_conv_features, offset_pred.detach()], dim=-1)
+        onset_pred = self.onset_stack_rnn(onset_input)
+
+        frame_pred_conv_output = self.frame_stack_conv(mel)
+        frame_input = torch.cat(
+            [frame_pred_conv_output, onset_pred.detach(), offset_pred.detach()],
+            dim=-1,
+        )
+        frame_pred = self.frame_stack_rnn(frame_input)
+
+        return frame_pred, onset_pred, offset_pred

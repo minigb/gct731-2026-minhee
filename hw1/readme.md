@@ -46,6 +46,15 @@ python3 train.py \
   experiment.name=exp_lr5e4_c32_f128_r128
 ```
 
+Use the new offset-aware model variant:
+
+```
+python3 train.py \
+  model=offset_conditioned \
+  optimization.offset_loss_weight=1.0 \
+  experiment.name=exp_offset_conditioned
+```
+
 Run multiple experiments consecutively (Hydra multirun):
 
 ```
