@@ -64,6 +64,17 @@ python3 train.py -m \
   model.cnn_unit=24,32
 ```
 
+Run multirun in parallel on 2 workers (e.g., 2 GPUs) with Hydra joblib launcher:
+
+```
+pip install hydra-joblib-launcher
+python3 train.py -m \
+  hydra/launcher=joblib \
+  hydra.launcher.n_jobs=2 \
+  model=basic,onsets_and_frames,offset_conditioned \
+  optimization.learning_rate=1e-3,5e-4
+```
+
 Outputs are saved under `hw1/experiments/`:
 - single run: `experiments/<experiment_name>/`
 - multirun sweep: `experiments/multirun/<timestamp>/<job_id>_<experiment_name>/`

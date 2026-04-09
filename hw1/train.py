@@ -11,6 +11,7 @@ from typing import Any, Dict
 import numpy as np
 import torch
 from hydra.core.hydra_config import HydraConfig
+from hydra.utils import get_original_cwd
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
@@ -50,7 +51,12 @@ def build_model_from_config(model_name: str, cnn_unit: int, fc_unit: int, rnn_un
     raise ValueError(f"Unsupported model name: {model_name}")
 
 
-def build_experiment_config(cfg: DictConfig, run_dir: Path, device: torch.device) -> Dict[str, Any]:
+def build_experiment_config(
+    cfg: DictConfig,
+    run_dir: Path,
+    device: torch.device,
+    resolved_data_path: Path,
+) -> Dict[str, Any]:
     return {
         "experiment_name": cfg.experiment.name,
         "save_dir": str(run_dir),
@@ -61,7 +67,8 @@ def build_experiment_config(cfg: DictConfig, run_dir: Path, device: torch.device
             "used": str(device),
         },
         "data": {
-            "path": str(cfg.data.path),
+            "path": str(resolved_data_path),
+            "path_input": str(cfg.data.path),
             "train_split": str(cfg.data.train_split),
             "valid_split": str(cfg.data.valid_split),
             "sequence_length": int(cfg.data.sequence_length),
@@ -91,6 +98,22 @@ def build_experiment_config(cfg: DictConfig, run_dir: Path, device: torch.device
             "tags": list(cfg.wandb.tags),
         },
     }
+
+
+def resolve_data_path(data_path: str) -> Path:
+    """Resolves dataset path robustly even when Hydra changes cwd per run."""
+    candidate = Path(data_path).expanduser()
+    if candidate.is_absolute():
+        return candidate
+
+    # For non-Hydra usage or chdir disabled.
+    cwd_candidate = (Path.cwd() / candidate).resolve()
+    if cwd_candidate.exists():
+        return cwd_candidate
+
+    # Hydra run dir -> resolve relative to launch directory.
+    original_candidate = (Path(get_original_cwd()) / candidate).resolve()
+    return original_candidate
 
 
 def init_wandb(cfg: DictConfig, run_dir: Path, experiment_config: Dict[str, Any]):
@@ -161,13 +184,15 @@ def main(cfg: DictConfig) -> None:
     run_dir = Path.cwd()
     set_seed(int(cfg.seed))
     device = get_device(str(cfg.device))
+    data_path = resolve_data_path(str(cfg.data.path))
 
     print(f"Run directory: {run_dir}")
     print(f"Using model: {cfg.model.name}")
     print(f"Using device: {device}")
+    print(f"Resolved dataset path: {data_path}")
 
     train_dataset = MAESTRO_small(
-        path=str(cfg.data.path),
+        path=str(data_path),
         groups=[str(cfg.data.train_split)],
         sequence_length=int(cfg.data.sequence_length),
         hop_size=HOP_SIZE,
@@ -175,7 +200,7 @@ def main(cfg: DictConfig) -> None:
         random_sample=True,
     )
     valid_dataset = MAESTRO_small(
-        path=str(cfg.data.path),
+        path=str(data_path),
         groups=[str(cfg.data.valid_split)],
         sequence_length=int(cfg.data.sequence_length),
         hop_size=HOP_SIZE,
@@ -214,7 +239,7 @@ def main(cfg: DictConfig) -> None:
         device=str(device),
     )
 
-    experiment_config = build_experiment_config(cfg, run_dir, runner.device)
+    experiment_config = build_experiment_config(cfg, run_dir, runner.device, data_path)
     save_json(run_dir / "config.json", experiment_config)
     save_json(
         run_dir / "config_resolved.json",

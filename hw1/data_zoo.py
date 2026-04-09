@@ -57,6 +57,7 @@ class MAESTRO_small(Dataset):
 
     def get_file_path_list_of_group(self, group: str) -> List[tuple]:
         metadata_path = os.path.join(self.path, "data.json")
+        print("❤️", os.path.abspath(metadata_path))
         with open(metadata_path, "r", encoding="utf-8") as f:
             metadata = json.load(f)
 
