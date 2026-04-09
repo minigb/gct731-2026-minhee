@@ -16,49 +16,74 @@ We use [a subset of the MAESTRO dataset](https://drive.google.com/file/d/1EQ6fFJ
 We provide a Python notebook file [GCT731-HW1.ipynb](https://colab.research.google.com/drive/1ljIU5vk8ZaFzUNmD5Y7W4Yt2jM0qqpCf?usp=sharing
 ) which includes all components for data preparation, building, training, and evaluting a baseline model. The baseline model is a simplifed onsets and frames model where two independent CNN stacks are used for onset and frame predictions, respectively. You can train and evalute the model by simply executing the cells one by one in the Python notebook file. 
 
-## Script-Based Workflow (for multiple experiments)
-You can now run the homework training from command line without relying on the notebook:
+## Script-Based Workflow (Hydra + multirun)
+Training now uses [Hydra](https://hydra.cc/) for config composition and sweeps.
+
+Install dependencies first:
 
 ```
 cd hw1
-python3 train.py --data-path gct731-maestro
+pip install hydra-core
 ```
 
-Try different hyperparameters by changing CLI arguments:
+Run one experiment with default config:
+
+```
+python3 train.py
+```
+
+Override config values from CLI:
 
 ```
 python3 train.py \
-  --data-path gct731-maestro \
-  --model onsets-and-frames \
-  --learning-rate 5e-4 \
-  --cnn-unit 32 \
-  --fc-unit 128 \
-  --rnn-unit 128 \
-  --epochs 10 \
-  --experiment-name exp_lr5e4_c32_f128_r128
+  model=onsets_and_frames \
+  data.path=gct731-maestro \
+  optimization.learning_rate=5e-4 \
+  model.cnn_unit=32 \
+  model.fc_unit=128 \
+  model.rnn_unit=128 \
+  optimization.epochs=10 \
+  experiment.name=exp_lr5e4_c32_f128_r128
 ```
 
-Output files (checkpoint + logs) are stored under `hw1/experiments/<experiment_name>/`.
+Run multiple experiments consecutively (Hydra multirun):
 
-Saved artifacts per experiment include:
-- `config.json`: full resolved experiment config
-- `args.json`: raw CLI arguments
+```
+python3 train.py -m \
+  model=basic,onsets_and_frames \
+  optimization.learning_rate=1e-3,5e-4 \
+  model.cnn_unit=24,32
+```
+
+Outputs are saved under `hw1/experiments/`:
+- single run: `experiments/<experiment_name>/`
+- multirun sweep: `experiments/multirun/<timestamp>/<job_id>_<experiment_name>/`
+
+Saved artifacts per run:
+- `config.json`: compact resolved training config
+- `config_resolved.json`: full resolved Hydra config
 - `history.json`: per-epoch metrics
 - `best_model.pt`: best checkpoint on validation loss
+- `.hydra/`: Hydra metadata (`config.yaml`, `hydra.yaml`, `overrides.yaml`)
 
 ### Optional: Weights & Biases (W&B)
-Enable online experiment tracking:
+Enable W&B by switching the config group:
 
 ```
-python3 train.py \
-  --data-path gct731-maestro \
-  --use-wandb \
-  --wandb-project gct731-hw1 \
-  --wandb-run-name baseline_run
+python3 train.py wandb=enabled wandb.project=gct731-hw1 wandb.run_name=baseline_run
+```
+
+W&B with multirun:
+
+```
+python3 train.py -m \
+  wandb=enabled \
+  optimization.learning_rate=1e-3,5e-4 \
+  model=basic,onsets_and_frames
 ```
 
 ### Evaluate a Trained Checkpoint
-You can load and evaluate a saved model checkpoint from command line:
+You can load and evaluate a saved checkpoint:
 
 ```
 python3 evaluate_checkpoint.py \

@@ -1,0 +1,37 @@
+defaults:
+  - model: basic
+  - wandb: disabled
+  - _self_
+
+seed: 42
+device: auto
+
+experiment:
+  name: ${model.name}_${now:%Y%m%d_%H%M%S}
+
+data:
+  path: gct731-maestro
+  train_split: train
+  valid_split: validation
+  sequence_length: 102400
+  batch_size: 16
+  num_workers: 0
+
+optimization:
+  epochs: 10
+  steps_per_epoch: 1000
+  learning_rate: 1e-3
+  weight_decay: 0.0
+
+save:
+  root_dir: experiments
+  save_every_epoch: false
+
+hydra:
+  job:
+    chdir: true
+  run:
+    dir: ${save.root_dir}/${experiment.name}
+  sweep:
+    dir: ${save.root_dir}/multirun/${now:%Y%m%d_%H%M%S}
+    subdir: ${hydra.job.num}_${experiment.name}
