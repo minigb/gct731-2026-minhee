@@ -1,2 +1,4 @@
 __pycache__/
 .codex
+wandb/
+hw1/experiments/

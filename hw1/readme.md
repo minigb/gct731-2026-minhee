@@ -16,6 +16,58 @@ We use [a subset of the MAESTRO dataset](https://drive.google.com/file/d/1EQ6fFJ
 We provide a Python notebook file [GCT731-HW1.ipynb](https://colab.research.google.com/drive/1ljIU5vk8ZaFzUNmD5Y7W4Yt2jM0qqpCf?usp=sharing
 ) which includes all components for data preparation, building, training, and evaluting a baseline model. The baseline model is a simplifed onsets and frames model where two independent CNN stacks are used for onset and frame predictions, respectively. You can train and evalute the model by simply executing the cells one by one in the Python notebook file. 
 
+## Script-Based Workflow (for multiple experiments)
+You can now run the homework training from command line without relying on the notebook:
+
+```
+cd hw1
+python3 train.py --data-path gct731-maestro
+```
+
+Try different hyperparameters by changing CLI arguments:
+
+```
+python3 train.py \
+  --data-path gct731-maestro \
+  --model onsets-and-frames \
+  --learning-rate 5e-4 \
+  --cnn-unit 32 \
+  --fc-unit 128 \
+  --rnn-unit 128 \
+  --epochs 10 \
+  --experiment-name exp_lr5e4_c32_f128_r128
+```
+
+Output files (checkpoint + logs) are stored under `hw1/experiments/<experiment_name>/`.
+
+Saved artifacts per experiment include:
+- `config.json`: full resolved experiment config
+- `args.json`: raw CLI arguments
+- `history.json`: per-epoch metrics
+- `best_model.pt`: best checkpoint on validation loss
+
+### Optional: Weights & Biases (W&B)
+Enable online experiment tracking:
+
+```
+python3 train.py \
+  --data-path gct731-maestro \
+  --use-wandb \
+  --wandb-project gct731-hw1 \
+  --wandb-run-name baseline_run
+```
+
+### Evaluate a Trained Checkpoint
+You can load and evaluate a saved model checkpoint from command line:
+
+```
+python3 evaluate_checkpoint.py \
+  --checkpoint experiments/exp_lr5e4_c32_f128_r128/best_model.pt \
+  --split test
+```
+
+This saves metrics to `eval_<split>.json` next to the checkpoint by default.
+
 
 ## Question 1: Review the Baseline Model (5pts)
 Your first task is to understand the baseline model. Unlike music classification tasks, the output of music transcription models is a temporal sequence such as frame-level MIDI notes (i.e., piano rolls). This requires a careful model design in building the neural network. When a mini-batch of mel spectrograms are used as input, the model takes the input data as B (batch) X C (channel) X T (time) x F (frequency) where C is 1 for the mel spectrogram, T corresponds to time frames, and F corresponds to frequency bins in mel. The dimensions of B, C, T, F change as the mel spectrograms are processed with convolution and pooling layers. In addition, the 4-dimensional tensors are partially transposed or flattened in order to be processed with fully connected layers. This is found at this part of the code. 
@@ -161,5 +213,3 @@ You should submit your Python code (`.ipynb` or `.py` files) and homework report
 * Did you improve the onsets and frames models with your ideas?
 * Did you write findings and discussions?
 * English does not need to be flawless but the text should be understandable and the code should be re-implementable.
-
-
