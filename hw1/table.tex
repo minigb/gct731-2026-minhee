@@ -8,9 +8,7 @@
 
 \begin{table}[t]
 \centering
-\caption{Validation F1 scores for the multirun sweep. Bold indicates the best score in each metric; underline indicates the second-best score.}
-\label{tab:multirun_f1_results}
-\begin{tabular}{llrrrrr}
+\begin{tabular}{ccccccc}
 \toprule
 Model & Scheduler & Batch & Frame F1 & Onset F1 & Note F1 & Note+Offset F1 \\
 \midrule
@@ -28,6 +26,9 @@ Offset-cond. & Cosine & 16 & 0.6373 & 0.7103 & 0.8297 & 0.3837 \\
 Offset-cond. & Cosine & 32 & 0.6440 & 0.7042 & 0.8138 & 0.3554 \\
 \bottomrule
 \end{tabular}
+\vspace{0.75em}
+\caption{Validation F1 scores for the multirun sweep. Bold indicates the best score in each metric; underline indicates the second-best score.}
+\label{tab:multirun_f1_results}
 \end{table}
 
 \end{document}
