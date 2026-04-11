@@ -13,6 +13,7 @@ import torch
 from hydra.core.hydra_config import HydraConfig
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
+from tqdm import tqdm
 
 import hydra
 from config import HOP_SIZE
@@ -320,7 +321,7 @@ def main(cfg: DictConfig) -> None:
         scheduler_step_size=int(cfg.scheduler.get("step_size", 1000)),
         scheduler_gamma=float(cfg.scheduler.get("gamma", 0.98)),
         offset_loss_weight=float(cfg.optimization.offset_loss_weight),
-        progress_position=job_num or 0,
+        progress_position=(job_num or 0) * 2 + 1,
         progress_desc=f"Train job {job_num} ({device})" if job_num is not None else f"Train ({device})",
         device=str(device),
     )
@@ -339,7 +340,13 @@ def main(cfg: DictConfig) -> None:
     if wandb_module is not None:
         step_logger = lambda step, metrics: wandb_module.log(metrics, step=step)
 
-    for epoch in range(1, int(cfg.optimization.epochs) + 1):
+    epoch_loop = tqdm(
+        range(1, int(cfg.optimization.epochs) + 1),
+        desc=f"Epochs job {job_num} ({device})" if job_num is not None else f"Epochs ({device})",
+        dynamic_ncols=True,
+        position=(job_num or 0) * 2,
+    )
+    for epoch in epoch_loop:
         print(f"\n[Epoch {epoch}/{int(cfg.optimization.epochs)}]")
         train_loss = runner.train_epoch(train_loader, epoch=epoch, step_logger=step_logger)
         valid_loss, metrics = runner.validate(valid_loader)
@@ -358,6 +365,7 @@ def main(cfg: DictConfig) -> None:
         print(f"valid_loss: {valid_loss:.6f}")
         print(f"learning_rate: {current_lr:.6e}")
         print_f1_metrics(metrics)
+        epoch_loop.set_postfix_str(f"train={train_loss:.4f}, valid={valid_loss:.4f}")
 
         if wandb_module is not None:
             epoch_step = epoch * int(cfg.optimization.steps_per_epoch)
