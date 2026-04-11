@@ -1,0 +1,33 @@
+\documentclass{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{booktabs}
+\usepackage[normalem]{ulem}
+
+\begin{document}
+
+\begin{table}[t]
+\centering
+\caption{Validation F1 scores for the multirun sweep. Bold indicates the best score in each metric; underline indicates the second-best score.}
+\label{tab:multirun_f1_results}
+\begin{tabular}{llrrrrr}
+\toprule
+Model & Scheduler & Batch & Frame F1 & Onset F1 & Note F1 & Note+Offset F1 \\
+\midrule
+Basic & Step & 16 & 0.6428 & 0.6822 & 0.7838 & 0.3099 \\
+Basic & Step & 32 & 0.6295 & 0.6460 & 0.7264 & 0.2904 \\
+Basic & Cosine & 16 & 0.6345 & 0.6774 & 0.7783 & 0.3016 \\
+Basic & Cosine & 32 & 0.6296 & 0.6364 & 0.7215 & 0.2920 \\
+Onsets\&Frames & Step & 16 & 0.6543 & \textbf{0.7222} & \textbf{0.8436} & 0.3750 \\
+Onsets\&Frames & Step & 32 & 0.6129 & 0.7041 & 0.8126 & 0.3713 \\
+Onsets\&Frames & Cosine & 16 & 0.6252 & 0.7117 & \uline{0.8363} & 0.3633 \\
+Onsets\&Frames & Cosine & 32 & 0.5992 & 0.7137 & 0.8291 & 0.3788 \\
+Offset-cond. & Step & 16 & \uline{0.6567} & 0.7093 & 0.8226 & \textbf{0.4087} \\
+Offset-cond. & Step & 32 & \textbf{0.6669} & \uline{0.7169} & 0.8272 & \uline{0.4074} \\
+Offset-cond. & Cosine & 16 & 0.6373 & 0.7103 & 0.8297 & 0.3837 \\
+Offset-cond. & Cosine & 32 & 0.6440 & 0.7042 & 0.8138 & 0.3554 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
