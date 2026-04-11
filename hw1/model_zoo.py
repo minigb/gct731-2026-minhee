@@ -160,7 +160,7 @@ class OnsetsAndFrames(nn.Module):
         mel = self.melspectrogram(audio)
         onset_pred = self.onset_stack(mel)
         frame_pred_conv_output = self.frame_stack_conv(mel)
-        frame_input = torch.cat([frame_pred_conv_output, onset_pred.detach()], dim=-1)
+        frame_input = torch.cat([onset_pred.detach(), frame_pred_conv_output], dim=-1)
         frame_pred = self.frame_stack_rnn(frame_input)
         return frame_pred, onset_pred
 
@@ -178,16 +178,16 @@ class OffsetConditionedOnsetsAndFrames(nn.Module):
         super().__init__()
         self.melspectrogram = LogMelSpectrogram()
 
-        self.offset_stack = nn.Sequential(
+        self.onset_stack = nn.Sequential(
             ConvStack(N_MELS, cnn_unit, fc_unit),
             BiLSTM(fc_unit, rnn_unit),
             nn.Linear(rnn_unit * 2, N_PIANO_KEYS),
             nn.Sigmoid(),
         )
 
-        self.onset_stack_conv = ConvStack(N_MELS, cnn_unit, fc_unit)
-        self.onset_stack_rnn = nn.Sequential(
-            BiLSTM(fc_unit + N_PIANO_KEYS, rnn_unit),
+        self.offset_stack = nn.Sequential(
+            ConvStack(N_MELS, cnn_unit, fc_unit),
+            BiLSTM(fc_unit, rnn_unit),
             nn.Linear(rnn_unit * 2, N_PIANO_KEYS),
             nn.Sigmoid(),
         )
@@ -206,15 +206,12 @@ class OffsetConditionedOnsetsAndFrames(nn.Module):
     def forward(self, audio: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         mel = self.melspectrogram(audio)
 
+        onset_pred = self.onset_stack(mel)
         offset_pred = self.offset_stack(mel)
-
-        onset_conv_features = self.onset_stack_conv(mel)
-        onset_input = torch.cat([onset_conv_features, offset_pred.detach()], dim=-1)
-        onset_pred = self.onset_stack_rnn(onset_input)
 
         frame_pred_conv_output = self.frame_stack_conv(mel)
         frame_input = torch.cat(
-            [frame_pred_conv_output, onset_pred.detach(), offset_pred.detach()],
+            [onset_pred.detach(), offset_pred.detach(), frame_pred_conv_output, ],
             dim=-1,
         )
         frame_pred = self.frame_stack_rnn(frame_input)
