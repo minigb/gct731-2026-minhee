@@ -154,7 +154,6 @@ def build_experiment_config(
         "scheduler": {
             "name": str(cfg.scheduler.name),
             "min_learning_rate": float(cfg.scheduler.get("min_learning_rate", 0.0)),
-            "t_max_multiplier": float(cfg.scheduler.get("t_max_multiplier", 1.0)),
             "step_size": int(cfg.scheduler.get("step_size", 1000)),
             "gamma": float(cfg.scheduler.get("gamma", 0.98)),
         },
@@ -238,7 +237,6 @@ def save_checkpoint(
             "scheduler_hparams": {
                 "name": str(cfg.scheduler.name),
                 "min_learning_rate": float(cfg.scheduler.get("min_learning_rate", 0.0)),
-                "t_max_multiplier": float(cfg.scheduler.get("t_max_multiplier", 1.0)),
                 "step_size": int(cfg.scheduler.get("step_size", 1000)),
                 "gamma": float(cfg.scheduler.get("gamma", 0.98)),
             },
@@ -319,7 +317,6 @@ def main(cfg: DictConfig) -> None:
         total_steps=int(cfg.optimization.epochs) * int(cfg.optimization.steps_per_epoch),
         scheduler_name=str(cfg.scheduler.name),
         scheduler_min_lr=float(cfg.scheduler.get("min_learning_rate", 0.0)),
-        scheduler_t_max_multiplier=float(cfg.scheduler.get("t_max_multiplier", 1.0)),
         scheduler_step_size=int(cfg.scheduler.get("step_size", 1000)),
         scheduler_gamma=float(cfg.scheduler.get("gamma", 0.98)),
         offset_loss_weight=float(cfg.optimization.offset_loss_weight),

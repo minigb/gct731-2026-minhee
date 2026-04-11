@@ -42,7 +42,6 @@ python3 train.py \
   optimization.learning_rate=5e-4 \
   scheduler=cosine \
   scheduler.min_learning_rate=0.0 \
-  scheduler.t_max_multiplier=2.0 \
   model.cnn_unit=32 \
   model.fc_unit=128 \
   model.rnn_unit=128 \
@@ -67,9 +66,6 @@ python3 train.py -m \
   optimization.learning_rate=1e-3,5e-4 \
   model.cnn_unit=24,32
 ```
-
-For cosine scheduling, increase `scheduler.t_max_multiplier` above `1.0` to make
-the learning rate decay more slowly.
 
 `device=cuda` requires a GPU. In multirun mode, each job is assigned to a GPU by
 `hydra.job.num % number_of_visible_gpus`. To restrict the GPU pool, pass
