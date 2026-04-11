@@ -166,14 +166,6 @@ class OnsetsAndFrames(nn.Module):
 
 
 class OffsetConditionedOnsetsAndFrames(nn.Module):
-    """Onsets-and-Frames variant with an explicit offset head.
-
-    Design:
-    1. Predict offsets from shared acoustic features.
-    2. Use offset predictions to condition onset prediction.
-    3. Use both onset and offset predictions to condition frame prediction.
-    """
-
     def __init__(self, cnn_unit: int, fc_unit: int, rnn_unit: int):
         super().__init__()
         self.melspectrogram = LogMelSpectrogram()
