@@ -34,7 +34,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--sequence-length", type=int, default=None)
     parser.add_argument("--batch-size", type=int, default=DEFAULT_BATCH_SIZE)
     parser.add_argument("--num-workers", type=int, default=DEFAULT_NUM_WORKERS)
-    parser.add_argument("--device", type=str, default="auto", choices=["auto", "cpu", "cuda"])
+    parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--output-json", type=str, default=None, help="Path to save evaluation metrics JSON.")
     parser.add_argument("--use-wandb", action="store_true")
     parser.add_argument("--wandb-project", type=str, default="gct731-hw1")
@@ -61,9 +61,23 @@ def load_json_if_exists(path: Path) -> Dict[str, Any]:
 
 
 def get_device(device_arg: str) -> torch.device:
-    if device_arg == "auto":
-        return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    return torch.device(device_arg)
+    normalized_device_arg = "cuda" if device_arg == "auto" else device_arg
+    device = torch.device(normalized_device_arg)
+    if device.type != "cuda":
+        raise ValueError(
+            f"Unsupported device '{device_arg}'. Evaluation requires CUDA; "
+            "use --device cuda or --device cuda:<index>."
+        )
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA GPU is required, but PyTorch cannot access one. "
+            "Check that the NVIDIA driver is running and that a CUDA-enabled PyTorch build is installed."
+        )
+    if device.index is not None and device.index >= torch.cuda.device_count():
+        raise RuntimeError(
+            f"Requested {device}, but PyTorch only sees {torch.cuda.device_count()} CUDA device(s)."
+        )
+    return device
 
 
 def build_model_from_config(model_name: str, cnn_unit: int, fc_unit: int, rnn_unit: int) -> torch.nn.Module:
@@ -163,7 +177,7 @@ def main() -> None:
         batch_size=args.batch_size,
         shuffle=False,
         num_workers=args.num_workers,
-        pin_memory=torch.cuda.is_available() and device.type != "cpu",
+        pin_memory=device.type == "cuda",
     )
 
     metrics = evaluate_model(model, dataloader, device, desc=f"Eval-{args.split}")

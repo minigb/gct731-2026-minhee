@@ -11,7 +11,6 @@ from typing import Any, Dict
 import numpy as np
 import torch
 from hydra.core.hydra_config import HydraConfig
-from hydra.utils import get_original_cwd
 from omegaconf import DictConfig, OmegaConf
 from torch.utils.data import DataLoader
 
@@ -35,10 +34,73 @@ def save_json(path: Path, data: Dict[str, Any]) -> None:
         json.dump(data, f, indent=2)
 
 
-def get_device(device_arg: str) -> torch.device:
-    if device_arg == "auto":
-        return torch.device("cuda") if torch.cuda.is_available() else torch.device("cpu")
-    return torch.device(device_arg)
+def parse_gpu_ids(gpu_ids_arg: Any) -> list[int] | None:
+    if gpu_ids_arg is None:
+        return None
+    if isinstance(gpu_ids_arg, str):
+        value = gpu_ids_arg.strip()
+        if not value or value.lower() in {"none", "null"}:
+            return None
+        return [int(part.strip()) for part in value.split(",") if part.strip()]
+    return [int(gpu_id) for gpu_id in gpu_ids_arg]
+
+
+def get_hydra_job_num(hydra_cfg: DictConfig) -> int | None:
+    job_num = OmegaConf.select(hydra_cfg, "job.num")
+    return None if job_num is None else int(job_num)
+
+
+def validate_cuda_device(device: torch.device, available_gpu_count: int) -> torch.device:
+    if device.type != "cuda":
+        raise ValueError(
+            f"Unsupported device '{device}'. This training script is configured to require CUDA; "
+            "use device=cuda or device=cuda:<index> and fix the GPU/driver setup if CUDA is unavailable."
+        )
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA GPU is required, but PyTorch cannot access one. "
+            "Check that the NVIDIA driver is running and that a CUDA-enabled PyTorch build is installed."
+        )
+    if device.index is not None and device.index >= available_gpu_count:
+        raise RuntimeError(
+            f"Requested {device}, but PyTorch only sees {available_gpu_count} CUDA device(s)."
+        )
+    return device
+
+
+def get_device(device_arg: str, gpu_ids_arg: Any = None, hydra_job_num: int | None = None) -> torch.device:
+    if not torch.cuda.is_available():
+        raise RuntimeError(
+            "CUDA GPU is required, but PyTorch cannot access one. "
+            "Check that the NVIDIA driver is running and that a CUDA-enabled PyTorch build is installed."
+        )
+
+    available_gpu_count = torch.cuda.device_count()
+    if available_gpu_count == 0:
+        raise RuntimeError("CUDA GPU is required, but PyTorch reports 0 CUDA devices.")
+
+    normalized_device_arg = "cuda" if device_arg == "auto" else device_arg
+    requested_device = torch.device(normalized_device_arg)
+    if requested_device.type != "cuda":
+        raise ValueError(
+            f"Unsupported device '{device_arg}'. This training script is configured to require CUDA; "
+            "use device=cuda or device=cuda:<index>."
+        )
+    if requested_device.index is not None:
+        return validate_cuda_device(requested_device, available_gpu_count)
+
+    gpu_ids = parse_gpu_ids(gpu_ids_arg) or list(range(available_gpu_count))
+    if not gpu_ids:
+        raise ValueError("gpu_ids must contain at least one GPU id when provided.")
+    invalid_gpu_ids = [gpu_id for gpu_id in gpu_ids if gpu_id < 0 or gpu_id >= available_gpu_count]
+    if invalid_gpu_ids:
+        raise RuntimeError(
+            f"gpu_ids contains unavailable GPU id(s) {invalid_gpu_ids}; "
+            f"PyTorch only sees {available_gpu_count} CUDA device(s)."
+        )
+
+    selected_gpu_id = gpu_ids[(hydra_job_num or 0) % len(gpu_ids)]
+    return torch.device(f"cuda:{selected_gpu_id}")
 
 
 def build_model_from_config(model_name: str, cnn_unit: int, fc_unit: int, rnn_unit: int) -> torch.nn.Module:
@@ -65,6 +127,7 @@ def build_experiment_config(
         "device": {
             "requested": str(cfg.device),
             "used": str(device),
+            "gpu_ids": parse_gpu_ids(cfg.gpu_ids),
         },
         "data": {
             "path": str(resolved_data_path),
@@ -85,39 +148,37 @@ def build_experiment_config(
             "epochs": int(cfg.optimization.epochs),
             "steps_per_epoch": int(cfg.optimization.steps_per_epoch),
             "learning_rate": float(cfg.optimization.learning_rate),
+            "min_learning_rate": float(cfg.optimization.min_learning_rate),
             "weight_decay": float(cfg.optimization.weight_decay),
             "offset_loss_weight": float(cfg.optimization.offset_loss_weight),
         },
-        "wandb": {
-            "enabled": bool(cfg.wandb.enabled),
-            "project": str(cfg.wandb.project),
-            "entity": cfg.wandb.entity,
-            "run_name": cfg.wandb.run_name,
-            "group": cfg.wandb.group,
-            "mode": str(cfg.wandb.mode),
-            "tags": list(cfg.wandb.tags),
+        "wandb_usage": {
+            "enabled": bool(cfg.wandb_usage.enabled),
+            "project": str(cfg.wandb_usage.project),
+            "entity": cfg.wandb_usage.entity,
+            "run_name": cfg.wandb_usage.run_name,
+            "group": cfg.wandb_usage.group,
+            "mode": str(cfg.wandb_usage.mode),
+            "tags": list(cfg.wandb_usage.tags),
         },
     }
 
 
-def resolve_data_path(data_path: str) -> Path:
+def resolve_data_path(data_path: str, launch_dir: Path) -> Path:
     """Resolves dataset path robustly even when Hydra changes cwd per run."""
     candidate = Path(data_path).expanduser()
     if candidate.is_absolute():
         return candidate
 
-    # For non-Hydra usage or chdir disabled.
     cwd_candidate = (Path.cwd() / candidate).resolve()
     if cwd_candidate.exists():
         return cwd_candidate
 
-    # Hydra run dir -> resolve relative to launch directory.
-    original_candidate = (Path(get_original_cwd()) / candidate).resolve()
-    return original_candidate
+    return (launch_dir / candidate).resolve()
 
 
 def init_wandb(cfg: DictConfig, run_dir: Path, experiment_config: Dict[str, Any]):
-    if not cfg.wandb.enabled:
+    if not cfg.wandb_usage.enabled:
         return None
 
     try:
@@ -127,18 +188,18 @@ def init_wandb(cfg: DictConfig, run_dir: Path, experiment_config: Dict[str, Any]
             "W&B logging requested but `wandb` is not installed. Install with `pip install wandb`."
         ) from exc
 
-    run_name = cfg.wandb.run_name or cfg.experiment.name
+    run_name = cfg.wandb_usage.run_name or cfg.experiment.name
     hydra_cfg = HydraConfig.get()
-    if hydra_cfg.mode.name == "MULTIRUN" and cfg.wandb.append_job_num and cfg.wandb.run_name is None:
+    if hydra_cfg.mode.name == "MULTIRUN" and cfg.wandb_usage.append_job_num and cfg.wandb_usage.run_name is None:
         run_name = f"{run_name}_{hydra_cfg.job.num}"
 
     wandb.init(
-        project=cfg.wandb.project,
-        entity=cfg.wandb.entity,
+        project=cfg.wandb_usage.project,
+        entity=cfg.wandb_usage.entity,
         name=run_name,
-        group=cfg.wandb.group,
-        mode=cfg.wandb.mode,
-        tags=list(cfg.wandb.tags),
+        group=cfg.wandb_usage.group,
+        mode=cfg.wandb_usage.mode,
+        tags=list(cfg.wandb_usage.tags),
         config=experiment_config,
         dir=str(run_dir),
     )
@@ -165,6 +226,7 @@ def save_checkpoint(
             },
             "optimizer_hparams": {
                 "learning_rate": float(cfg.optimization.learning_rate),
+                "min_learning_rate": float(cfg.optimization.min_learning_rate),
                 "weight_decay": float(cfg.optimization.weight_decay),
                 "offset_loss_weight": float(cfg.optimization.offset_loss_weight),
             },
@@ -181,14 +243,21 @@ def save_checkpoint(
 
 @hydra.main(version_base=None, config_path="conf", config_name="train")
 def main(cfg: DictConfig) -> None:
-    run_dir = Path.cwd()
+    hydra_cfg = HydraConfig.get()
+    run_dir = Path(hydra_cfg.runtime.output_dir)
+    launch_dir = Path(hydra_cfg.runtime.cwd)
     set_seed(int(cfg.seed))
-    device = get_device(str(cfg.device))
-    data_path = resolve_data_path(str(cfg.data.path))
+    job_num = get_hydra_job_num(hydra_cfg)
+    device = get_device(str(cfg.device), cfg.gpu_ids, job_num)
+    torch.cuda.set_device(device)
+    data_path = resolve_data_path(str(cfg.data.path), launch_dir=launch_dir)
 
+    run_dir.mkdir(parents=True, exist_ok=True)
     print(f"Run directory: {run_dir}")
+    print(f"Launch directory: {launch_dir}")
     print(f"Using model: {cfg.model.name}")
     print(f"Using device: {device}")
+    print(f"Hydra job number: {job_num}")
     print(f"Resolved dataset path: {data_path}")
 
     train_dataset = MAESTRO_small(
@@ -208,7 +277,7 @@ def main(cfg: DictConfig) -> None:
         random_sample=False,
     )
 
-    pin_memory = torch.cuda.is_available() and str(cfg.device) != "cpu"
+    pin_memory = device.type == "cuda"
     train_loader = DataLoader(
         train_dataset,
         batch_size=int(cfg.data.batch_size),
@@ -235,7 +304,11 @@ def main(cfg: DictConfig) -> None:
         lr=float(cfg.optimization.learning_rate),
         weight_decay=float(cfg.optimization.weight_decay),
         steps_per_epoch=int(cfg.optimization.steps_per_epoch),
+        total_steps=int(cfg.optimization.epochs) * int(cfg.optimization.steps_per_epoch),
+        min_lr=float(cfg.optimization.min_learning_rate),
         offset_loss_weight=float(cfg.optimization.offset_loss_weight),
+        progress_position=job_num or 0,
+        progress_desc=f"Train job {job_num} ({device})" if job_num is not None else f"Train ({device})",
         device=str(device),
     )
 
@@ -249,10 +322,13 @@ def main(cfg: DictConfig) -> None:
 
     best_valid_loss = float("inf")
     history: list[Dict[str, Any]] = []
+    step_logger = None
+    if wandb_module is not None:
+        step_logger = lambda step, metrics: wandb_module.log(metrics, step=step)
 
     for epoch in range(1, int(cfg.optimization.epochs) + 1):
         print(f"\n[Epoch {epoch}/{int(cfg.optimization.epochs)}]")
-        train_loss = runner.train_epoch(train_loader)
+        train_loss = runner.train_epoch(train_loader, epoch=epoch, step_logger=step_logger)
         valid_loss, metrics = runner.validate(valid_loader)
         current_lr = float(runner.optimizer.param_groups[0]["lr"])
 
@@ -271,7 +347,8 @@ def main(cfg: DictConfig) -> None:
         print_f1_metrics(metrics)
 
         if wandb_module is not None:
-            wandb_module.log(row, step=epoch)
+            epoch_step = epoch * int(cfg.optimization.steps_per_epoch)
+            wandb_module.log(row, step=epoch_step)
 
         if cfg.save.save_every_epoch:
             save_checkpoint(

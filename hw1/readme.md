@@ -18,6 +18,7 @@ We provide a Python notebook file [GCT731-HW1.ipynb](https://colab.research.goog
 
 ## Script-Based Workflow (Hydra + multirun)
 Training now uses [Hydra](https://hydra.cc/) for config composition and sweeps.
+For safer path behavior, this repo uses `hydra.job.chdir=false` by default.
 
 Install dependencies first:
 
@@ -39,6 +40,7 @@ python3 train.py \
   model=onsets_and_frames \
   data.path=gct731-maestro \
   optimization.learning_rate=5e-4 \
+  optimization.min_learning_rate=0.0 \
   model.cnn_unit=32 \
   model.fc_unit=128 \
   model.rnn_unit=128 \
@@ -64,6 +66,10 @@ python3 train.py -m \
   model.cnn_unit=24,32
 ```
 
+`device=cuda` requires a GPU. In multirun mode, each job is assigned to a GPU by
+`hydra.job.num % number_of_visible_gpus`. To restrict the GPU pool, pass
+`gpu_ids` explicitly, for example `gpu_ids=[0,1]`.
+
 Run multirun in parallel on 2 workers (e.g., 2 GPUs) with Hydra joblib launcher:
 
 ```
@@ -71,6 +77,7 @@ pip install hydra-joblib-launcher
 python3 train.py -m \
   hydra/launcher=joblib \
   hydra.launcher.n_jobs=2 \
+  'gpu_ids=[0,1]' \
   model=basic,onsets_and_frames,offset_conditioned \
   optimization.learning_rate=1e-3,5e-4
 ```
@@ -90,14 +97,14 @@ Saved artifacts per run:
 Enable W&B by switching the config group:
 
 ```
-python3 train.py wandb=enabled wandb.project=gct731-hw1 wandb.run_name=baseline_run
+python3 train.py wandb_usage=enabled wandb_usage.project=onsets-and-frames-2026 wandb_usage.run_name=baseline_run
 ```
 
 W&B with multirun:
 
 ```
 python3 train.py -m \
-  wandb=enabled \
+  wandb_usage=enabled \
   optimization.learning_rate=1e-3,5e-4 \
   model=basic,onsets_and_frames
 ```
