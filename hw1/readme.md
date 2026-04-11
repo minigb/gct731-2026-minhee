@@ -16,6 +16,111 @@ We use [a subset of the MAESTRO dataset](https://drive.google.com/file/d/1EQ6fFJ
 We provide a Python notebook file [GCT731-HW1.ipynb](https://colab.research.google.com/drive/1ljIU5vk8ZaFzUNmD5Y7W4Yt2jM0qqpCf?usp=sharing
 ) which includes all components for data preparation, building, training, and evaluting a baseline model. The baseline model is a simplifed onsets and frames model where two independent CNN stacks are used for onset and frame predictions, respectively. You can train and evalute the model by simply executing the cells one by one in the Python notebook file. 
 
+## Script-Based Workflow (Hydra + multirun)
+Training now uses [Hydra](https://hydra.cc/) for config composition and sweeps.
+For safer path behavior, this repo uses `hydra.job.chdir=false` by default.
+
+Install dependencies first:
+
+```
+cd hw1
+pip install hydra-core
+```
+
+Run one experiment with default config:
+
+```
+python3 train.py
+```
+
+Override config values from CLI:
+
+```
+python3 train.py \
+  model=onsets_and_frames \
+  data.path=gct731-maestro \
+  optimization.learning_rate=5e-4 \
+  scheduler=cosine \
+  scheduler.min_learning_rate=0.0 \
+  model.cnn_unit=32 \
+  model.fc_unit=128 \
+  model.rnn_unit=128 \
+  optimization.epochs=10 \
+  experiment.name=exp_lr5e4_c32_f128_r128
+```
+
+Use the new offset-aware model variant:
+
+```
+python3 train.py \
+  model=offset_conditioned \
+  optimization.offset_loss_weight=1.0 \
+  experiment.name=exp_offset_conditioned
+```
+
+Run multiple experiments consecutively (Hydra multirun):
+
+```
+python3 train.py -m \
+  model=basic,onsets_and_frames \
+  optimization.learning_rate=1e-3,5e-4 \
+  model.cnn_unit=24,32
+```
+
+`device=cuda` requires a GPU. In multirun mode, each job is assigned to a GPU by
+`hydra.job.num % number_of_visible_gpus`. To restrict the GPU pool, pass
+`gpu_ids` explicitly, for example `gpu_ids=[0,1]`.
+
+Run multirun in parallel on 2 workers (e.g., 2 GPUs) with Hydra joblib launcher:
+
+```
+pip install hydra-joblib-launcher
+python3 train.py -m \
+  hydra/launcher=joblib \
+  hydra.launcher.n_jobs=2 \
+  'gpu_ids=[0,1]' \
+  model=basic,onsets_and_frames,offset_conditioned \
+  optimization.learning_rate=1e-3,5e-4
+```
+
+Outputs are saved under `hw1/experiments/`:
+- single run: `experiments/<experiment_name>/`
+- multirun sweep: `experiments/multirun/<timestamp>/<job_id>_<experiment_name>/`
+
+Saved artifacts per run:
+- `config.json`: compact resolved training config
+- `config_resolved.json`: full resolved Hydra config
+- `history.json`: per-epoch metrics
+- `best_model.pt`: best checkpoint on validation loss
+- `.hydra/`: Hydra metadata (`config.yaml`, `hydra.yaml`, `overrides.yaml`)
+
+### Optional: Weights & Biases (W&B)
+Enable W&B by switching the config group:
+
+```
+python3 train.py wandb_usage=enabled wandb_usage.project=onsets-and-frames-2026 wandb_usage.run_name=baseline_run
+```
+
+W&B with multirun:
+
+```
+python3 train.py -m \
+  wandb_usage=enabled \
+  optimization.learning_rate=1e-3,5e-4 \
+  model=basic,onsets_and_frames
+```
+
+### Evaluate a Trained Checkpoint
+You can load and evaluate a saved checkpoint:
+
+```
+python3 evaluate_checkpoint.py \
+  --checkpoint experiments/exp_lr5e4_c32_f128_r128/best_model.pt \
+  --split test
+```
+
+This saves metrics to `eval_<split>.json` next to the checkpoint by default.
+
 
 ## Question 1: Review the Baseline Model (5pts)
 Your first task is to understand the baseline model. Unlike music classification tasks, the output of music transcription models is a temporal sequence such as frame-level MIDI notes (i.e., piano rolls). This requires a careful model design in building the neural network. When a mini-batch of mel spectrograms are used as input, the model takes the input data as B (batch) X C (channel) X T (time) x F (frequency) where C is 1 for the mel spectrogram, T corresponds to time frames, and F corresponds to frequency bins in mel. The dimensions of B, C, T, F change as the mel spectrograms are processed with convolution and pooling layers. In addition, the 4-dimensional tensors are partially transposed or flattened in order to be processed with fully connected layers. This is found at this part of the code. 
@@ -161,5 +266,3 @@ You should submit your Python code (`.ipynb` or `.py` files) and homework report
 * Did you improve the onsets and frames models with your ideas?
 * Did you write findings and discussions?
 * English does not need to be flawless but the text should be understandable and the code should be re-implementable.
-
-
