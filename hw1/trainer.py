@@ -30,6 +30,7 @@ class Runner:
         total_steps: int | None = None,
         scheduler_name: str = "cosine",
         scheduler_min_lr: float = 0.0,
+        scheduler_t_max_multiplier: float = 1.0,
         scheduler_step_size: int = 1000,
         scheduler_gamma: float = 0.98,
         offset_loss_weight: float = 1.0,
@@ -57,6 +58,7 @@ class Runner:
             name=scheduler_name,
             total_steps=total_steps or steps_per_epoch,
             min_lr=scheduler_min_lr,
+            t_max_multiplier=scheduler_t_max_multiplier,
             step_size=scheduler_step_size,
             gamma=scheduler_gamma,
         )
@@ -72,11 +74,13 @@ class Runner:
         name: str,
         total_steps: int,
         min_lr: float,
+        t_max_multiplier: float,
         step_size: int,
         gamma: float,
     ) -> LRScheduler | None:
         if name == "cosine":
-            return CosineAnnealingLR(self.optimizer, T_max=total_steps, eta_min=min_lr)
+            t_max = max(1, round(total_steps * t_max_multiplier))
+            return CosineAnnealingLR(self.optimizer, T_max=t_max, eta_min=min_lr)
         if name == "step":
             return StepLR(self.optimizer, step_size=step_size, gamma=gamma)
         raise ValueError(f"Unsupported scheduler '{name}'. Choose one of: cosine, step.")

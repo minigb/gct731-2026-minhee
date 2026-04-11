@@ -1,6 +1,7 @@
 defaults:
   - model: basic
   - wandb_usage: enabled
+  - scheduler: cosine
   - _self_
 
 seed: 42
@@ -24,11 +25,6 @@ optimization:
   learning_rate: 1e-3
   weight_decay: 0.0
   offset_loss_weight: 1.0
-  scheduler:
-    name: cosine
-    min_learning_rate: 0.0
-    step_size: 1000
-    gamma: 0.98
 
 save:
   root_dir: experiments
