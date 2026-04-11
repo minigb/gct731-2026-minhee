@@ -7,7 +7,7 @@ from typing import Callable, Dict, Iterable, Tuple
 import torch
 import torch.nn as nn
 from torch.nn.utils import clip_grad_norm_
-from torch.optim.lr_scheduler import CosineAnnealingLR
+from torch.optim.lr_scheduler import CosineAnnealingLR, LRScheduler, StepLR
 from tqdm import tqdm
 
 from data_zoo import allocate_batch
@@ -28,7 +28,10 @@ class Runner:
         weight_decay: float,
         steps_per_epoch: int = 1000,
         total_steps: int | None = None,
-        min_lr: float = 0.0,
+        scheduler_name: str = "cosine",
+        scheduler_min_lr: float = 0.0,
+        scheduler_step_size: int = 1000,
+        scheduler_gamma: float = 0.98,
         offset_loss_weight: float = 1.0,
         grad_clip: float = 3.0,
         progress_position: int = 0,
@@ -50,13 +53,33 @@ class Runner:
 
         self.model = model.to(self.device)
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=lr, weight_decay=weight_decay)
-        self.scheduler = CosineAnnealingLR(self.optimizer, T_max=total_steps or steps_per_epoch, eta_min=min_lr)
+        self.scheduler = self.build_scheduler(
+            name=scheduler_name,
+            total_steps=total_steps or steps_per_epoch,
+            min_lr=scheduler_min_lr,
+            step_size=scheduler_step_size,
+            gamma=scheduler_gamma,
+        )
         self.criterion = nn.BCELoss().to(self.device)
         self.steps_per_epoch = steps_per_epoch
         self.offset_loss_weight = offset_loss_weight
         self.grad_clip = grad_clip
         self.progress_position = progress_position
         self.progress_desc = progress_desc
+
+    def build_scheduler(
+        self,
+        name: str,
+        total_steps: int,
+        min_lr: float,
+        step_size: int,
+        gamma: float,
+    ) -> LRScheduler | None:
+        if name == "cosine":
+            return CosineAnnealingLR(self.optimizer, T_max=total_steps, eta_min=min_lr)
+        if name == "step":
+            return StepLR(self.optimizer, step_size=step_size, gamma=gamma)
+        raise ValueError(f"Unsupported scheduler '{name}'. Choose one of: cosine, step.")
 
     def train_epoch(
         self,
@@ -90,7 +113,8 @@ class Runner:
             loss.backward()
             clip_grad_norm_(self.model.parameters(), self.grad_clip)
             self.optimizer.step()
-            self.scheduler.step()
+            if self.scheduler is not None:
+                self.scheduler.step()
 
             loss_value = float(loss.detach().item())
             running_loss += loss_value

@@ -40,7 +40,8 @@ python3 train.py \
   model=onsets_and_frames \
   data.path=gct731-maestro \
   optimization.learning_rate=5e-4 \
-  optimization.min_learning_rate=0.0 \
+  optimization.scheduler.name=cosine \
+  optimization.scheduler.min_learning_rate=0.0 \
   model.cnn_unit=32 \
   model.fc_unit=128 \
   model.rnn_unit=128 \
